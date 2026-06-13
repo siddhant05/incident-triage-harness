@@ -43,8 +43,20 @@ def _redact(text: str) -> str:
 
 
 def parse_sentry_payload(payload: dict[str, Any]) -> IncidentMaterial:
-    """Normalize Sentry webhook payload. Tolerant of missing fields."""
-    event = payload.get("event") or payload.get("data", {}).get("event") or payload
+    """Normalize Sentry webhook payload. Tolerant of missing fields.
+
+    Supports:
+      - Demo / hand-crafted: top-level "event"
+      - Internal Integration error.created: payload["data"]["error"]
+      - Issue webhook event_alert: payload["data"]["event"]
+    """
+    data = payload.get("data") or {}
+    event = (
+        payload.get("event")
+        or data.get("event")
+        or data.get("error")
+        or payload
+    )
     event_id = event.get("event_id") or payload.get("id") or "unknown"
     tags_raw = event.get("tags") or []
     # Sentry tags arrive as [["key", "value"], ...]
