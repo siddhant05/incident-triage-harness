@@ -86,3 +86,14 @@ signature checks; unset it for the demo/dev curl flow.
 3. POST `demo/payload_malformed.json` → see guardrail reject + alarm
 4. Swap agent: POST same payload with `?agent=claude` → identical harness path, different `Proposal`
 5. List runs: `GET /runs`, inspect a run: `GET /runs/<id>`
+
+### Scenario catalog
+
+For end-to-end demos that exercise every guardrail / checkpoint / alarm
+(routing variations, confidence cap, action-ladder block, dedup, rate-limit
+storm, etc.) see [`demo/SCENARIOS.md`](demo/SCENARIOS.md).
+
+```bash
+# list every available scenario with a one-line description
+python demo/fire_sentry_event.py --list
+```
