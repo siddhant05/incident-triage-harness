@@ -1,0 +1,36 @@
+{
+  "name": "Ads tracker error routes to ads-platform",
+  "payload": {
+    "event": {
+      "event_id": "eval-003-ads-tracker",
+      "title": "TypeError: cannot read property 'campaignId' of undefined",
+      "message": "Ads tracker failed to attribute click event",
+      "tags": [
+        ["service", "ads-tracker"],
+        ["level", "error"],
+        ["ads", "true"],
+        ["campaign", "cpc"]
+      ],
+      "exception": {
+        "values": [
+          {
+            "type": "TypeError",
+            "value": "cannot read property 'campaignId' of undefined",
+            "stacktrace": {
+              "frames": [
+                {"filename": "src/ads/tracker.js", "function": "attribute", "lineno": 54},
+                {"filename": "src/ads/pixel.js", "function": "fire", "lineno": 19}
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "status": "ok",
+    "routed_team": "ads-platform",
+    "min_confidence": 0.0,
+    "final_action_in": ["slack_post", "jira_create", "page_secondary"]
+  }
+}

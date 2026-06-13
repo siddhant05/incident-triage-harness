@@ -168,54 +168,111 @@ def _gh_get(url: str) -> tuple[int, dict[str, str], Any]:
     return resp.status_code, dict(resp.headers), body
 
 
-def _github_collect(repo_spec: str, limit: int = 5) -> dict[str, Any]:
-    """Fetch recent commits + their changed files via GitHub REST."""
-    list_url = f"{GITHUB_API}/repos/{repo_spec}/commits?per_page={limit}"
+def _gh_fetch_commit_files(repo_spec: str, sha: str) -> list[str]:
+    """Per-commit files via GET /repos/{owner}/{repo}/commits/{sha}."""
     try:
-        status, headers, body = _gh_get(list_url)
+        cs, _, cb = _gh_get(f"{GITHUB_API}/repos/{repo_spec}/commits/{sha}")
+    except requests.RequestException:
+        return []
+    if cs != 200 or not isinstance(cb, dict):
+        return []
+    out = []
+    for f in cb.get("files", []) or []:
+        fn = f.get("filename")
+        if fn:
+            out.append(fn)
+    return out
+
+
+def _gh_list_commits(
+    repo_spec: str,
+    limit: int,
+    path: str | None = None,
+) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """List commits, optionally scoped to a path. Returns (commits, error_reason)."""
+    url = f"{GITHUB_API}/repos/{repo_spec}/commits?per_page={limit}"
+    if path:
+        url += f"&path={path}"
+    try:
+        status, headers, body = _gh_get(url)
     except requests.Timeout:
-        return {"available": False, "reason": f"github timeout > {GITHUB_HTTP_TIMEOUT_SEC}s"}
+        return None, f"github timeout > {GITHUB_HTTP_TIMEOUT_SEC}s"
     except requests.RequestException as e:
-        return {"available": False, "reason": f"github request error: {e}"}
-
+        return None, f"github request error: {e}"
     if status == 404:
-        return {"available": False, "reason": f"github 404: repo {repo_spec} not found"}
+        return None, f"github 404: repo {repo_spec} not found"
     if status == 401:
-        return {"available": False, "reason": "github 401: unauthorized (check GITHUB_TOKEN)"}
+        return None, "github 401: unauthorized (check GITHUB_TOKEN)"
     if status == 403 and headers.get("X-RateLimit-Remaining") == "0":
-        return {"available": False, "reason": "github 403: rate limit exhausted"}
+        return None, "github 403: rate limit exhausted"
     if status >= 400 or not isinstance(body, list):
-        return {"available": False, "reason": f"github status {status}"}
+        return None, f"github status {status}"
+    return body, None
 
-    commits: list[dict[str, Any]] = []
-    for entry in body:
-        sha = entry.get("sha", "")
-        commit_meta = entry.get("commit", {}) or {}
-        author = (commit_meta.get("author") or {}).get("name") or (
-            entry.get("author") or {}
-        ).get("login") or ""
-        msg_full = commit_meta.get("message", "") or ""
-        msg = msg_full.splitlines()[0] if msg_full else ""
 
-        files_changed: list[str] = []
-        if sha:
-            try:
-                cs, ch, cb = _gh_get(f"{GITHUB_API}/repos/{repo_spec}/commits/{sha}")
-            except requests.Timeout:
-                cs, ch, cb = 0, {}, None
-            except requests.RequestException:
-                cs, ch, cb = 0, {}, None
-            if cs == 200 and isinstance(cb, dict):
-                for f in cb.get("files", []) or []:
-                    fn = f.get("filename")
-                    if fn:
-                        files_changed.append(fn)
-        commits.append({"sha": sha, "author": author, "msg": msg, "files_changed": files_changed})
+def _entry_to_commit(repo_spec: str, entry: dict[str, Any], scope_label: str) -> dict[str, Any]:
+    sha = entry.get("sha", "")
+    commit_meta = entry.get("commit", {}) or {}
+    author = (commit_meta.get("author") or {}).get("name") or (
+        entry.get("author") or {}
+    ).get("login") or ""
+    msg_full = commit_meta.get("message", "") or ""
+    msg = msg_full.splitlines()[0] if msg_full else ""
+    files_changed = _gh_fetch_commit_files(repo_spec, sha) if sha else []
+    return {
+        "sha": sha,
+        "author": author,
+        "msg": msg,
+        "files_changed": files_changed,
+        "scope": scope_label,
+    }
+
+
+def _github_collect(
+    repo_spec: str,
+    stack_files: list[str],
+    limit_per_path: int = 3,
+    fallback_limit: int = 5,
+) -> dict[str, Any]:
+    """Path-scoped fetch.
+
+    For each file in the stack trace, ask GitHub for the last `limit_per_path`
+    commits touching that file. Union them (dedup by SHA). If no stack files
+    or all path queries return empty, fall back to recent commits on default branch.
+    """
+    seen: dict[str, dict[str, Any]] = {}
+    queried_paths: list[str] = []
+    first_error: str | None = None
+
+    for path in stack_files[:5]:
+        queried_paths.append(path)
+        commits, err = _gh_list_commits(repo_spec, limit_per_path, path=path)
+        if commits is None:
+            first_error = first_error or err
+            continue
+        for entry in commits:
+            sha = entry.get("sha")
+            if not sha or sha in seen:
+                continue
+            seen[sha] = _entry_to_commit(repo_spec, entry, scope_label=f"path:{path}")
+
+    if not seen:
+        # Fallback: recent commits on default branch (old behavior).
+        commits, err = _gh_list_commits(repo_spec, fallback_limit, path=None)
+        if commits is None:
+            return {"available": False, "reason": err or first_error or "no commits"}
+        for entry in commits:
+            sha = entry.get("sha")
+            if not sha or sha in seen:
+                continue
+            seen[sha] = _entry_to_commit(repo_spec, entry, scope_label="recent")
 
     return {
         "available": True,
         "repo": repo_spec,
-        "recent_commits": commits,
+        "scope": "path-scoped" if queried_paths and any(c["scope"].startswith("path:") for c in seen.values()) else "recent",
+        "queried_paths": queried_paths,
+        "recent_commits": list(seen.values()),
         "blame": [],
     }
 
@@ -228,13 +285,28 @@ def collect_git_context(repo_spec: str, service: str | None, stack_files: list[s
     Returns identical schema in both branches.
     """
     if _is_github_repo_spec(repo_spec):
-        return _github_collect(repo_spec, limit=5)
+        return _github_collect(repo_spec, stack_files=stack_files)
 
     # Local subprocess fallback (back-compat with DEMO_GIT_REPO).
     if not repo_spec or not os.path.isdir(os.path.join(repo_spec, ".git")):
         return {"available": False, "reason": "no git repo at path"}
     try:
-        recent = git_log(repo_spec, limit=5)
+        # Path-scoped: log per stack file, dedup by SHA. Fallback to recent log if none.
+        seen: dict[str, dict[str, Any]] = {}
+        queried: list[str] = []
+        for path in stack_files[:5]:
+            queried.append(path)
+            for c in git_log(repo_spec, limit=3, path_filter=path):
+                sha = c["sha"]
+                if sha and sha not in seen:
+                    c["scope"] = f"path:{path}"
+                    seen[sha] = c
+        if not seen:
+            for c in git_log(repo_spec, limit=5):
+                sha = c["sha"]
+                if sha and sha not in seen:
+                    c["scope"] = "recent"
+                    seen[sha] = c
         blame_info = []
         for f in stack_files[:3]:
             try:
@@ -246,7 +318,9 @@ def collect_git_context(repo_spec: str, service: str | None, stack_files: list[s
         return {
             "available": True,
             "repo": repo_spec,
-            "recent_commits": recent,
+            "scope": "path-scoped" if any(c.get("scope", "").startswith("path:") for c in seen.values()) else "recent",
+            "queried_paths": queried,
+            "recent_commits": list(seen.values()),
             "blame": blame_info,
         }
     except GitTimeout as e:

@@ -40,6 +40,45 @@ pip install pytest
 pytest -q tests/
 ```
 
+## Evals
+
+End-to-end behavioral evals live in `evals/`. Each case is a JSON fixture in
+`evals/cases/` with a Sentry payload plus an `expected` block describing the
+RunResult fields that must hold (status, routed team, min confidence,
+final action, alarms, suspect-file substrings).
+
+```bash
+# Run all cases against the deterministic heuristic agent (no API key needed)
+python -m evals.run_eval --agent heuristic
+
+# Run a single case
+python -m evals.run_eval --agent heuristic --case users_api_null_pointer
+
+# Point at a custom fixtures directory
+python -m evals.run_eval --cases-dir evals/cases
+
+# LLM-backed agents (may surface flaky cases; needs API key)
+export ANTHROPIC_API_KEY=sk-...
+python -m evals.run_eval --agent claude
+
+export GEMINI_API_KEY=...
+python -m evals.run_eval --agent gemini
+```
+
+Exit code is `0` if every case passes, `1` otherwise. Each run uses a fresh
+SQLite store (so dedup never short-circuits) and passes `git_repo=""` to the
+Pipeline so evals do not depend on a network or local clone.
+
+The heuristic agent is the deterministic baseline and is the one wired into
+`tests/test_evals.py`. LLM-backed agents (`gemini`, `claude`) may produce
+flaky results — treat their pass rate as a signal rather than a gate.
+
+## Live Sentry Integration
+
+To receive real Sentry webhooks (HMAC-verified) at the deployed harness, follow
+[SENTRY_SETUP.md](SENTRY_SETUP.md). Set `SENTRY_CLIENT_SECRET` on Render to enable
+signature checks; unset it for the demo/dev curl flow.
+
 ## Demo flow
 
 1. Start service: `uvicorn harness.main:app --port 8000`

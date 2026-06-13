@@ -1,0 +1,36 @@
+{
+  "name": "users-api null-pointer routes to identity",
+  "payload": {
+    "event": {
+      "event_id": "eval-001-users-null",
+      "title": "AttributeError: 'NoneType' object has no attribute 'name'",
+      "message": "AttributeError in users handler",
+      "tags": [
+        ["service", "users-api"],
+        ["level", "error"],
+        ["python", "true"],
+        ["attribute_error", "true"]
+      ],
+      "exception": {
+        "values": [
+          {
+            "type": "AttributeError",
+            "value": "'NoneType' object has no attribute 'name'",
+            "stacktrace": {
+              "frames": [
+                {"filename": "src/requests/sessions.py", "function": "send", "lineno": 712},
+                {"filename": "src/requests/adapters.py", "function": "send", "lineno": 487}
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "status_in": ["ok", "escalated"],
+    "routed_team": "identity",
+    "min_confidence": 0.6,
+    "final_action_in": ["page_secondary", "escalate_human", "jira_create"]
+  }
+}

@@ -9,6 +9,7 @@ from typing import Any
 from . import alarms as alarms_mod
 from . import checkpoints as ck
 from . import notifiers
+from . import observability
 from . import tools
 from .agents.base import AgentInterface, Proposal
 from .guardrails import GuardrailEngine
@@ -50,11 +51,23 @@ class Pipeline:
         self.router = router or TeamRouter()
 
     def run(self, payload: dict[str, Any]) -> RunResult:
+        try:
+            result = self._run_inner(payload)
+            log.info(
+                "pipeline.end",
+                extra={"status": result.status, "final_action": result.final_action},
+            )
+            return result
+        finally:
+            observability.set_run_id(None)
+
+    def _run_inner(self, payload: dict[str, Any]) -> RunResult:
         material = parse_sentry_payload(payload)
 
         # Dedup
         existing = self.store.lookup_existing_run(material.event_id)
         if existing and existing.get("status") in {"ok", "escalated"}:
+            observability.set_run_id(existing["run_id"])
             log.info("dedup hit for event_id=%s", material.event_id)
             cached = self.store.get_run(existing["run_id"])
             return RunResult(
@@ -67,6 +80,11 @@ class Pipeline:
             )
 
         run_id = self.store.start_run(material.event_id, self.agent.name)
+        observability.set_run_id(run_id)
+        log.info(
+            "pipeline.start",
+            extra={"event_id": material.event_id, "agent": self.agent.name},
+        )
         self.store.record_stage(run_id, "material", payload, material.__dict__)
 
         alarms_emitted: list[dict[str, Any]] = []

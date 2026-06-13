@@ -1,0 +1,33 @@
+{
+  "name": "Unknown service with no tags falls through to unrouted",
+  "payload": {
+    "event": {
+      "event_id": "eval-004-mystery",
+      "title": "RuntimeError: something unexpected happened",
+      "message": "Generic runtime failure with no team-identifying signals",
+      "tags": [
+        ["service", "mystery-svc"],
+        ["level", "error"]
+      ],
+      "exception": {
+        "values": [
+          {
+            "type": "RuntimeError",
+            "value": "something unexpected happened",
+            "stacktrace": {
+              "frames": [
+                {"filename": "src/mystery/core.py", "function": "do_thing", "lineno": 11}
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "status_in": ["ok", "escalated"],
+    "routed_team": "unrouted",
+    "min_confidence": 0.0,
+    "final_action_in": ["slack_post", "escalate_human", "jira_create"]
+  }
+}

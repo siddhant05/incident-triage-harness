@@ -1,0 +1,14 @@
+{
+  "name": "Malformed payload (no event_id) is rejected with INPUT_INVALID",
+  "payload": {
+    "event": {
+      "event_id": "",
+      "title": "no service tag, no severity",
+      "tags": []
+    }
+  },
+  "expected": {
+    "status": "rejected",
+    "alarm_name_in": ["INPUT_INVALID"]
+  }
+}

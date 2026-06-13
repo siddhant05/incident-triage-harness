@@ -1,0 +1,37 @@
+{
+  "name": "Postgres timeout in checkout-svc routes to checkout (tag-based)",
+  "payload": {
+    "event": {
+      "event_id": "eval-002-checkout-pg",
+      "title": "OperationalError: postgres timeout expired in checkout flow",
+      "message": "Connection pool exhausted talking to Postgres from checkout",
+      "tags": [
+        ["service", "checkout-svc"],
+        ["level", "error"],
+        ["checkout", "true"],
+        ["payment", "true"],
+        ["stripe", "true"]
+      ],
+      "exception": {
+        "values": [
+          {
+            "type": "OperationalError",
+            "value": "timeout expired",
+            "stacktrace": {
+              "frames": [
+                {"filename": "src/checkout/cart.py", "function": "submit", "lineno": 142},
+                {"filename": "src/checkout/payments.py", "function": "charge", "lineno": 88}
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "status": "ok",
+    "routed_team": "checkout",
+    "min_confidence": 0.0,
+    "final_action_in": ["slack_post", "jira_create", "page_secondary"]
+  }
+}
