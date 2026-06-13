@@ -54,6 +54,24 @@ def _capture_with_synthetic_frame(filename: str, func_name: str, exc_type: str, 
         sentry_sdk.capture_exception()
 
 
+def _force_unique_grouping(kind: str) -> None:
+    """Sentry collapses similar events into one issue (one webhook).
+    Tag + fingerprint with a UUID so each fire becomes its own Sentry issue.
+    """
+    unique = uuid.uuid4().hex[:8]
+    sentry_sdk.set_tag("scenario", kind)
+    sentry_sdk.set_tag("fire_id", unique)
+    sentry_sdk.set_context("scenario", {"kind": kind, "fire_id": unique})
+    # Custom fingerprint -> new Sentry issue every call.
+    try:
+        sentry_sdk.get_isolation_scope().set_fingerprint(["scenario", kind, unique])
+    except Exception:
+        try:
+            sentry_sdk.set_fingerprint(["scenario", kind, unique])  # older SDK
+        except Exception:
+            pass
+
+
 # ---------------------------------------------------------------------------
 # Existing kinds (kept verbatim for back-compat)
 # ---------------------------------------------------------------------------
@@ -307,6 +325,7 @@ def run_storm(kind: str, n: int) -> int:
     fn = KINDS[kind]
     for i in range(n):
         with sentry_sdk.push_scope():
+            _force_unique_grouping(kind)
             fn()
         if (i + 1) % 5 == 0:
             print(f"  fired {i + 1}/{n}")
@@ -360,6 +379,7 @@ def main():
 
     # Default: single Sentry event
     sentry_sdk.init(dsn=DSN, send_default_pii=True, traces_sample_rate=0.0)
+    _force_unique_grouping(args.kind)
     KINDS[args.kind]()
     sentry_sdk.flush(timeout=5)
     print(f"sent: {args.kind}")
