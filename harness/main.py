@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .agents.heuristic_agent import HeuristicAgent
 from .observability import configure_logging, metrics
@@ -176,6 +178,9 @@ def _make_agent(name: str):
 app = FastAPI(title="Incident Triage Harness")
 _store = Store()
 
+_STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -183,7 +188,12 @@ def health() -> dict[str, str]:
 
 
 @app.get("/")
-def root() -> dict[str, Any]:
+def root():
+    return FileResponse(_STATIC_DIR / "dashboard.html")
+
+
+@app.get("/api/info")
+def api_info() -> dict[str, Any]:
     return {
         "service": "incident-triage-harness",
         "endpoints": {
@@ -192,6 +202,7 @@ def root() -> dict[str, Any]:
             "GET /runs": "List recent runs",
             "GET /runs/{run_id}": "Inspect a run (stages + alarms)",
             "GET /cost": "Token spend + estimated USD cost dashboard",
+            "GET /metrics": "Run/alarm metrics",
             "GET /health": "Health check",
         },
         "docs": "See HARNESS.md in the repo for architecture.",

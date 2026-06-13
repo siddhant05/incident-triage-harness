@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Incident Triage Harness</title>
+<style>
+  :root {
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c222b; --border:#2a313c;
+    --fg:#d6dde6; --muted:#8b95a5; --accent:#4ea1ff;
+    --ok:#36b37e; --escal:#ff8b3d; --rej:#ff5d5d; --cached:#7a8392;
+    --low:#7a8392; --med:#e3c34a; --high:#ff8b3d; --crit:#ff5d5d;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.45}
+  header{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 22px;border-bottom:1px solid var(--border);background:var(--panel)}
+  header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.3px}
+  header .meta{display:flex;gap:14px;align-items:center;color:var(--muted);font-size:12px}
+  header button{background:var(--panel2);color:var(--fg);border:1px solid var(--border);
+    padding:5px 12px;border-radius:4px;cursor:pointer;font:inherit}
+  header button:hover{border-color:var(--accent)}
+  main{padding:18px 22px;display:flex;flex-direction:column;gap:18px;max-width:1400px;margin:0 auto}
+  .row{display:grid;gap:14px}
+  .row.r1{grid-template-columns:repeat(3,1fr)}
+  .row.r2{grid-template-columns:2fr 1fr}
+  @media (max-width:900px){.row.r1,.row.r2{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:14px 16px}
+  .card h2{margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:600}
+  .big{font-size:28px;font-weight:600}
+  .sub{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap}
+  .chip{padding:2px 8px;border-radius:10px;font-size:11px;background:var(--panel2);border:1px solid var(--border)}
+  .chip.ok{color:var(--ok);border-color:var(--ok)}
+  .chip.escalated{color:var(--escal);border-color:var(--escal)}
+  .chip.rejected{color:var(--rej);border-color:var(--rej)}
+  .chip.cached{color:var(--cached);border-color:var(--cached)}
+  .bar{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;margin-top:10px}
+  .bar > div{height:100%;background:var(--accent);transition:width .3s}
+  .bar > div.warn{background:var(--escal)}
+  .bar > div.danger{background:var(--rej)}
+  .bar-row{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:12px}
+  .bar-row .label{width:80px;color:var(--muted)}
+  .bar-row .bbar{flex:1;height:10px;background:var(--panel2);border-radius:3px;overflow:hidden}
+  .bar-row .bbar > div{height:100%}
+  .bar-row .count{width:36px;text-align:right;color:var(--fg)}
+  .sev-LOW > div{background:var(--low)} .sev-MEDIUM > div{background:var(--med)}
+  .sev-HIGH > div{background:var(--high)} .sev-CRITICAL > div{background:var(--crit)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--border)}
+  th{color:var(--muted);font-weight:500;text-transform:uppercase;font-size:10px;letter-spacing:.6px}
+  tr:hover td{background:var(--panel2)}
+  .status{padding:2px 7px;border-radius:3px;font-size:11px;display:inline-block}
+  .status.ok{background:rgba(54,179,126,.15);color:var(--ok)}
+  .status.escalated{background:rgba(255,139,61,.15);color:var(--escal)}
+  .status.rejected{background:rgba(255,93,93,.15);color:var(--rej)}
+  .status.cached{background:rgba(122,131,146,.15);color:var(--cached)}
+  .run-link{color:var(--accent);cursor:pointer;text-decoration:none;font-family:inherit}
+  .run-link:hover{text-decoration:underline}
+  .err{color:var(--rej);font-size:11px;margin-top:6px}
+  .muted{color:var(--muted)}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:flex-start;
+    justify-content:center;padding:40px 20px;overflow-y:auto;z-index:100}
+  .modal-bg.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:6px;
+    width:100%;max-width:900px;padding:18px 22px}
+  .modal header{padding:0 0 12px;background:transparent;border:none;border-bottom:1px solid var(--border);margin-bottom:14px}
+  .modal h3{margin:0;font-size:14px}
+  .modal .close{cursor:pointer;color:var(--muted);background:none;border:none;font-size:18px}
+  .timeline{position:relative;padding-left:18px;border-left:2px solid var(--border)}
+  .stage{margin:0 0 12px;position:relative}
+  .stage::before{content:"";position:absolute;left:-25px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--cached)}
+  .stage.pass::before{background:var(--ok)} .stage.fail::before{background:var(--rej)}
+  .stage .hdr{display:flex;gap:10px;align-items:center;cursor:pointer}
+  .stage .hdr strong{font-size:12px}
+  .stage .icon{font-size:11px}
+  .stage pre{background:var(--bg);border:1px solid var(--border);border-radius:4px;
+    padding:8px 10px;margin:6px 0 0;max-height:280px;overflow:auto;font-size:11px;white-space:pre-wrap;word-break:break-word;display:none}
+  .stage.open pre{display:block}
+  .alarms{margin-top:14px}
+  .alarm{padding:8px 10px;border:1px solid var(--border);border-radius:4px;margin:6px 0;background:var(--panel2)}
+  .alarm .sev{font-size:10px;padding:1px 6px;border-radius:3px;margin-right:8px}
+  .sev.LOW{background:var(--low);color:#000} .sev.MEDIUM{background:var(--med);color:#000}
+  .sev.HIGH{background:var(--high);color:#000} .sev.CRITICAL{background:var(--crit);color:#fff}
+</style>
+</head>
+<body>
+<header>
+  <h1>Incident Triage Harness</h1>
+  <div class="meta">
+    <span>Last run: <span id="last-run">—</span></span>
+    <button id="refresh-btn">Refresh</button>
+  </div>
+</header>
+
+<main>
+  <div class="row r1">
+    <div class="card" id="card-runs">
+      <h2>Total runs</h2>
+      <div class="big" id="runs-total">—</div>
+      <div class="sub" id="runs-chips"></div>
+      <div class="err" id="err-metrics"></div>
+    </div>
+    <div class="card" id="card-tokens">
+      <h2>Tokens today</h2>
+      <div class="big" id="tokens-today">—</div>
+      <div class="muted" id="tokens-budget">—</div>
+      <div class="bar"><div id="tokens-bar" style="width:0%"></div></div>
+      <div class="err" id="err-cost"></div>
+    </div>
+    <div class="card" id="card-cost">
+      <h2>Total est. cost</h2>
+      <div class="big" id="cost-total">—</div>
+      <div class="muted" id="cost-sub"></div>
+    </div>
+  </div>
+
+  <div class="row r2">
+    <div class="card">
+      <h2>By agent</h2>
+      <table><thead><tr>
+        <th>agent</th><th>runs</th><th>tokens</th><th>avg/run</th><th>est $</th>
+      </tr></thead><tbody id="agent-tbody"><tr><td colspan="5" class="muted">loading…</td></tr></tbody></table>
+    </div>
+    <div class="card">
+      <h2>Alarms by severity</h2>
+      <div id="sev-list"><div class="muted">loading…</div></div>
+      <div class="err" id="err-sev"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Recent runs</h2>
+    <table><thead><tr>
+      <th>started</th><th>event_id</th><th>agent</th><th>status</th><th>final_action</th><th>run_id</th>
+    </tr></thead><tbody id="runs-tbody"><tr><td colspan="6" class="muted">loading…</td></tr></tbody></table>
+    <div class="err" id="err-runs"></div>
+  </div>
+</main>
+
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <header>
+      <h3 id="modal-title">Run</h3>
+      <button class="close" id="modal-close">×</button>
+    </header>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const REFRESH_MS = 10000;
+
+function esc(s){
+  if (s === null || s === undefined) return "";
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function relTime(ts){
+  if (!ts) return "—";
+  const t = (typeof ts === "number") ? ts*1000 : Date.parse(ts);
+  if (!t || isNaN(t)) return "—";
+  const d = Math.max(0, (Date.now() - t)/1000);
+  if (d < 60) return Math.floor(d)+"s ago";
+  if (d < 3600) return Math.floor(d/60)+"m ago";
+  if (d < 86400) return Math.floor(d/3600)+"h ago";
+  return Math.floor(d/86400)+"d ago";
+}
+async function getJSON(url){
+  const r = await fetch(url, {cache:"no-store"});
+  if (!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}
+function showErr(id, msg){ document.getElementById(id).textContent = msg ? "error: "+msg : ""; }
+
+async function loadMetrics(){
+  try {
+    const m = await getJSON("/metrics");
+    showErr("err-metrics","");
+    document.getElementById("runs-total").textContent = m.runs_total ?? 0;
+    const rbs = m.runs_by_status || {};
+    const chips = ["ok","escalated","rejected","cached"]
+      .map(k => `<span class="chip ${k}">${k} ${rbs[k]||0}</span>`).join("");
+    document.getElementById("runs-chips").innerHTML = chips;
+    document.getElementById("last-run").textContent = relTime(m.last_run_ts);
+    const sev = m.alarms_by_severity || {};
+    const max = Math.max(1, ...Object.values(sev));
+    const html = ["LOW","MEDIUM","HIGH","CRITICAL"].map(k => {
+      const v = sev[k]||0; const pct = (v/max)*100;
+      return `<div class="bar-row"><div class="label">${k}</div>
+        <div class="bbar sev-${k}"><div style="width:${pct}%"></div></div>
+        <div class="count">${v}</div></div>`;
+    }).join("");
+    document.getElementById("sev-list").innerHTML = html;
+    showErr("err-sev","");
+  } catch(e){ showErr("err-metrics", e.message); showErr("err-sev", e.message); }
+}
+
+async function loadCost(){
+  try {
+    const c = await getJSON("/cost");
+    showErr("err-cost","");
+    const today = (c.by_day && c.by_day.length) ? c.by_day[c.by_day.length-1].tokens : 0;
+    document.getElementById("tokens-today").textContent = today.toLocaleString();
+    const budget = c.daily_budget || 0;
+    const pct = budget ? (today/budget)*100 : 0;
+    document.getElementById("tokens-budget").textContent =
+      budget ? `${pct.toFixed(1)}% of ${budget.toLocaleString()} budget` : "no budget configured";
+    const bar = document.getElementById("tokens-bar");
+    bar.style.width = Math.min(100, pct).toFixed(1)+"%";
+    bar.className = pct>=90 ? "danger" : pct>=70 ? "warn" : "";
+    const byAgent = c.by_agent || {};
+    let totalCost = 0;
+    for (const k in byAgent) totalCost += (byAgent[k].est_cost_usd||0);
+    document.getElementById("cost-total").textContent = "$"+totalCost.toFixed(4);
+    document.getElementById("cost-sub").textContent =
+      `${c.total_tokens.toLocaleString()} tokens across ${c.total_runs} runs`;
+    const rows = Object.entries(byAgent).map(([name, a]) =>
+      `<tr><td>${esc(name)}</td><td>${a.runs}</td><td>${a.tokens.toLocaleString()}</td>
+        <td>${a.avg_tokens_per_run.toFixed(1)}</td><td>$${a.est_cost_usd.toFixed(6)}</td></tr>`
+    ).join("");
+    document.getElementById("agent-tbody").innerHTML = rows || `<tr><td colspan="5" class="muted">no data</td></tr>`;
+  } catch(e){ showErr("err-cost", e.message); }
+}
+
+async function loadRuns(){
+  try {
+    const data = await getJSON("/runs?limit=10");
+    showErr("err-runs","");
+    const rows = (data.runs||[]).map(r => `
+      <tr>
+        <td title="${esc(r.started_at)}">${esc(relTime(r.started_at))}</td>
+        <td>${esc(r.event_id||"")}</td>
+        <td>${esc(r.agent_name||"")}</td>
+        <td><span class="status ${esc(r.status||"")}">${esc(r.status||"")}</span></td>
+        <td>${esc(r.final_action||"")}</td>
+        <td><a class="run-link" data-rid="${esc(r.run_id)}">${esc(r.run_id||"").slice(0,12)}</a></td>
+      </tr>`).join("");
+    document.getElementById("runs-tbody").innerHTML = rows || `<tr><td colspan="6" class="muted">no runs yet</td></tr>`;
+    document.querySelectorAll(".run-link").forEach(a => {
+      a.addEventListener("click", () => openRun(a.dataset.rid));
+    });
+  } catch(e){ showErr("err-runs", e.message); }
+}
+
+async function openRun(rid){
+  const bg = document.getElementById("modal-bg");
+  document.getElementById("modal-title").textContent = "Run " + rid;
+  document.getElementById("modal-body").innerHTML = `<div class="muted">loading…</div>`;
+  bg.classList.add("open");
+  try {
+    const d = await getJSON("/runs/"+encodeURIComponent(rid));
+    const run = d.run || {};
+    const stages = d.stages || [];
+    const alarms = d.alarms || [];
+    const meta = `<div class="muted" style="margin-bottom:10px">
+      ${esc(run.agent_name||"")} · ${esc(run.status||"")} · ${esc(run.final_action||"")}
+    </div>`;
+    const stageHtml = stages.map((s,i) => {
+      const cls = s.passed ? "pass" : "fail";
+      const icon = s.passed ? "✓" : "✗";
+      const input = s.input_json ? JSON.stringify(JSON.parse(s.input_json), null, 2) : "";
+      const output = s.output_json ? JSON.stringify(JSON.parse(s.output_json), null, 2) : "";
+      return `<div class="stage ${cls}" data-i="${i}">
+        <div class="hdr"><span class="icon">${icon}</span>
+          <strong>${esc(s.stage_name)}</strong>
+          <span class="muted">${esc(relTime(s.timestamp))}</span></div>
+        <pre>${esc("input:\n"+input+"\n\noutput:\n"+output)}</pre>
+      </div>`;
+    }).join("");
+    const alarmHtml = alarms.length ? `<div class="alarms"><h3 style="font-size:12px;margin:14px 0 6px">Alarms</h3>` +
+      alarms.map(a => `<div class="alarm">
+        <span class="sev ${esc(a.severity||"LOW")}">${esc(a.severity||"")}</span>
+        <strong>${esc(a.name||"")}</strong>
+        <div class="muted" style="margin-top:4px">${esc(a.recommended_action||"")}</div>
+      </div>`).join("") + `</div>` : "";
+    document.getElementById("modal-body").innerHTML = meta +
+      `<div class="timeline">${stageHtml || '<div class="muted">no stages</div>'}</div>` + alarmHtml;
+    document.querySelectorAll(".stage .hdr").forEach(h => {
+      h.addEventListener("click", () => h.parentElement.classList.toggle("open"));
+    });
+  } catch(e){
+    document.getElementById("modal-body").innerHTML = `<div class="err">error: ${esc(e.message)}</div>`;
+  }
+}
+
+document.getElementById("modal-close").addEventListener("click",
+  () => document.getElementById("modal-bg").classList.remove("open"));
+document.getElementById("modal-bg").addEventListener("click", e => {
+  if (e.target.id === "modal-bg") e.currentTarget.classList.remove("open");
+});
+document.getElementById("refresh-btn").addEventListener("click", refreshAll);
+
+function refreshAll(){ loadMetrics(); loadCost(); loadRuns(); }
+refreshAll();
+setInterval(refreshAll, REFRESH_MS);
+</script>
+</body>
+</html>

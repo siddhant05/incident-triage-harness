@@ -344,6 +344,15 @@ def test_webhook_accepts_valid_signature():
         os.environ.pop("SENTRY_CLIENT_SECRET", None)
 
 
+def test_dashboard_serves_html():
+    from harness.main import app
+    client = TestClient(app)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers.get("content-type", "")
+    assert "Incident Triage Harness" in resp.text
+
+
 def test_webhook_ignores_other_resources():
     from harness.main import app
     secret = "secret"
