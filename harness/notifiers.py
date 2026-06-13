@@ -92,6 +92,23 @@ def page_pagerduty(summary: str, severity: str, context: dict[str, Any]) -> dict
     return record
 
 
+TEAM_EMOJI = {
+    "ads-platform": ":loudspeaker:",
+    "infra-platform": ":wrench:",
+    "components-ui": ":art:",
+    "checkout": ":credit_card:",
+    "identity": ":closed_lock_with_key:",
+    "data-platform": ":bar_chart:",
+    "unrouted": ":warning:",
+}
+
+
+def _severity_emoji(sev: str | None) -> str:
+    return {"P0": ":fire:", "P1": ":fire:", "P2": ":pager:", "P3": ":ticket:", "P4": ":speech_balloon:"}.get(
+        (sev or "").upper(), ":grey_question:"
+    )
+
+
 def format_slack_message(
     proposal: dict[str, Any],
     material: dict[str, Any],
@@ -99,8 +116,14 @@ def format_slack_message(
     route: dict[str, Any] | None = None,
 ) -> str:
     """Compose Slack text for diagnosis or escalation."""
+    sev = material.get("severity", "?")
+    team_id = (route or {}).get("team_id", "")
+    team_emoji = TEAM_EMOJI.get(team_id, ":robot_face:")
+    sev_emoji = _severity_emoji(sev)
     lines = [
-        f"*Incident triage* — `{material.get('event_id', 'unknown')}` ({material.get('severity', '?')})",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"{team_emoji} *{(route or {}).get('team_name', 'Unknown team')}* {sev_emoji} `{sev}`",
+        f"*Incident triage* — `{material.get('event_id', 'unknown')}`",
         f"Service: `{material.get('service', '?')}`",
         f"Title: {material.get('title', '')}",
     ]
