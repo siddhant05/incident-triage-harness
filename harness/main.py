@@ -37,6 +37,21 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/")
+def root() -> dict[str, Any]:
+    return {
+        "service": "incident-triage-harness",
+        "endpoints": {
+            "POST /webhook/sentry?agent=<heuristic|gemini|claude>": "Process a Sentry webhook payload",
+            "POST /replay/{run_id}?agent=<...>": "Re-run a persisted incident",
+            "GET /runs": "List recent runs",
+            "GET /runs/{run_id}": "Inspect a run (stages + alarms)",
+            "GET /health": "Health check",
+        },
+        "docs": "See HARNESS.md in the repo for architecture.",
+    }
+
+
 @app.get("/runs")
 def list_runs(limit: int = 20) -> dict[str, Any]:
     return {"runs": _store.list_runs(limit=limit)}
