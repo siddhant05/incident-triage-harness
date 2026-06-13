@@ -15,16 +15,22 @@ def post_slack(
     text: str,
     blocks: list[dict[str, Any]] | None = None,
     channel: str | None = None,
+    username: str | None = None,
+    icon_emoji: str | None = None,
 ) -> dict[str, Any]:
     """Post to Slack webhook. Returns {sent, status, channel}. Falls back to log if no webhook.
 
-    The `channel` is recorded for visibility (team routing). Incoming webhooks bind to a
-    specific channel by design, so `channel` is metadata, not a runtime override.
+    Pass `username` and `icon_emoji` to break Slack's consecutive-message header consolidation
+    so each scenario renders as its own row.
     """
     url = os.environ.get("SLACK_WEBHOOK_URL")
     payload: dict[str, Any] = {"text": text}
     if blocks:
         payload["blocks"] = blocks
+    if username:
+        payload["username"] = username
+    if icon_emoji:
+        payload["icon_emoji"] = icon_emoji
     result: dict[str, Any] = {"channel_intent": channel}
     if not url:
         log.info("SLACK (no webhook configured) [%s]: %s", channel, text)
@@ -38,6 +44,28 @@ def post_slack(
         log.exception("slack post failed")
         result.update({"sent": False, "status": f"error:{e}", "payload": payload})
         return result
+
+
+def slack_identity(team_id: str | None, status: str, severity: str | None) -> tuple[str, str]:
+    """Choose username + icon_emoji per scenario so Slack doesn't consolidate headers."""
+    sev = (severity or "").upper()
+    if status == "escalated":
+        emoji = ":rotating_light:"
+    elif status == "rejected":
+        emoji = ":no_entry_sign:"
+    elif status == "cached":
+        emoji = ":package:"
+    elif sev in {"P0", "P1"}:
+        emoji = ":fire:"
+    elif sev == "P2":
+        emoji = ":pager:"
+    elif sev == "P3":
+        emoji = ":ticket:"
+    else:
+        emoji = ":speech_balloon:"
+    team_label = (team_id or "triage").replace("_", "-")
+    username = f"Triage [{team_label}]"
+    return username, emoji
 
 
 def create_jira(title: str, body: str, fields: dict[str, Any] | None = None) -> dict[str, Any]:

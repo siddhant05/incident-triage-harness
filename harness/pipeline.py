@@ -316,8 +316,9 @@ class Pipeline:
         }
         route_dict = route.to_dict()
         slack_text = notifiers.format_slack_message(proposal.to_dict(), mat_dict, alarms_emitted, route_dict)
+        username, icon = notifiers.slack_identity(route.team_id, "ok", material.severity)
         notifications: dict[str, Any] = {
-            "slack": notifiers.post_slack(slack_text, channel=route.slack),
+            "slack": notifiers.post_slack(slack_text, channel=route.slack, username=username, icon_emoji=icon),
             "routed_team": route_dict,
         }
         if proposal.recommended_action == "jira_create":
@@ -360,8 +361,10 @@ class Pipeline:
         route_dict = route.to_dict() if route else None
         text = "🚨 ESCALATION\n" + notifiers.format_slack_message(proposal_dict, mat_dict, alarms_emitted, route_dict)
         channel = route.slack if route else None
+        team_id = route.team_id if route else None
+        username, icon = notifiers.slack_identity(team_id, "escalated", material.severity)
         notif: dict[str, Any] = {
-            "slack": notifiers.post_slack(text, channel=channel),
+            "slack": notifiers.post_slack(text, channel=channel, username=username, icon_emoji=icon),
             "routed_team": route_dict,
         }
         notif["pagerduty"] = notifiers.page_pagerduty(
