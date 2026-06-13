@@ -353,6 +353,62 @@ def test_dashboard_serves_html():
     assert "Incident Triage Harness" in resp.text
 
 
+# ----- confidence cross-check -----
+
+
+class _FakeCp:
+    def __init__(self, score):
+        self.score = score
+
+
+def test_cross_check_caps_llm_when_no_signal():
+    from harness.confidence import apply_cross_check, compute_signal_score
+
+    sig = compute_signal_score(_FakeCp(0.0), _FakeCp(0.0), _FakeCp(0.0))
+    assert sig["score"] == 0.0
+    out = apply_cross_check(llm_conf=0.9, harness_score=sig["score"], floor=0.6, cap=0.4)
+    assert out["final"] == 0.4
+    assert out["applied_cap"] is True
+
+
+def test_cross_check_trusts_llm_when_signals_strong():
+    from harness.confidence import apply_cross_check
+
+    out = apply_cross_check(llm_conf=0.9, harness_score=0.8, floor=0.6, cap=0.4)
+    assert out["final"] == 0.9
+    assert out["applied_cap"] is False
+
+
+def test_cross_check_skipped_for_heuristic(tmp_path):
+    store = Store(tmp_path / "h.db")
+    p = Pipeline(agent=HeuristicAgent(), store=store, git_repo="")
+    r = p.run(_payload("sample_payload.json"))
+    assert r.proposal is not None
+    assert r.proposal["llm_reported_confidence"] == r.proposal["confidence"]
+    assert r.proposal["confidence_cap_applied"] is False
+    assert "heuristic" in (r.proposal["confidence_reason"] or "").lower()
+
+
+def test_signal_score_weighted_sum():
+    from harness.confidence import compute_signal_score
+
+    # All 1s → 1.0
+    s = compute_signal_score(_FakeCp(1.0), _FakeCp(1.0), _FakeCp(1.0))
+    assert s["score"] == 1.0
+    # All 0s → 0.0
+    s = compute_signal_score(_FakeCp(0.0), _FakeCp(0.0), _FakeCp(0.0))
+    assert s["score"] == 0.0
+    # Mixed default weights: runbook=1.0(0.4) + git=0.0(0.4) + signal=1.0(0.2) = 0.6
+    s = compute_signal_score(_FakeCp(1.0), _FakeCp(0.0), _FakeCp(1.0))
+    assert abs(s["score"] - 0.6) < 1e-4
+    # Custom weights
+    s = compute_signal_score(
+        _FakeCp(1.0), _FakeCp(0.0), _FakeCp(0.0),
+        weights={"runbook_match": 1.0, "git_analysis": 1.0, "signal_sufficiency": 0.0},
+    )
+    assert abs(s["score"] - 0.5) < 1e-4
+
+
 def test_webhook_ignores_other_resources():
     from harness.main import app
     secret = "secret"

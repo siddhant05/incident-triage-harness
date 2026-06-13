@@ -90,6 +90,15 @@ def format_slack_message(
         f"*Confidence:* {proposal.get('confidence', 0):.2f}",
         f"*Recommended action:* `{proposal.get('recommended_action', '?')}`",
     ])
+    harness_signal = proposal.get("harness_signal_score")
+    llm_reported = proposal.get("llm_reported_confidence")
+    if harness_signal is not None and llm_reported is not None:
+        final = proposal.get("confidence", 0)
+        cap_note = " (capped)" if proposal.get("confidence_cap_applied") else ""
+        lines.append(
+            f"*Confidence breakdown:* LLM={float(llm_reported):.2f} "
+            f"harness={float(harness_signal):.2f} → final={float(final):.2f}{cap_note}"
+        )
     suspects = proposal.get("suspect_commits") or []
     if suspects:
         lines.append("")

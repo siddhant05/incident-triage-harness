@@ -8,6 +8,7 @@ from typing import Any
 
 from . import alarms as alarms_mod
 from . import checkpoints as ck
+from . import confidence as conf_mod
 from . import notifiers
 from . import observability
 from . import tools
@@ -181,9 +182,56 @@ class Pipeline:
 
         # -------- Checkpoints --------
         cps = []
-        cps.append(ck.signal_sufficiency(material))
-        cps.append(ck.runbook_match(runbook))
-        cps.append(ck.git_analysis(material, git_ctx))
+        cp_signal = ck.signal_sufficiency(material)
+        cp_runbook = ck.runbook_match(runbook)
+        cp_git = ck.git_analysis(material, git_ctx)
+        cps.append(cp_signal)
+        cps.append(cp_runbook)
+        cps.append(cp_git)
+
+        # -------- Confidence cross-check --------
+        # LLM agents self-report confidence; harness independently scores from
+        # runbook/git/signal checkpoints and caps the LLM if signals are weak.
+        # Heuristic agent IS the signal scorer — skip cross-check, but record
+        # the fields so downstream consumers always see them.
+        conf_cfg = self.guardrails.config.get("confidence") or {}
+        floor = float(conf_cfg.get("signal_floor", conf_mod.DEFAULT_FLOOR))
+        cap = float(conf_cfg.get("cap_when_low_signal", conf_mod.DEFAULT_CAP))
+        weights = conf_cfg.get("components") or None
+
+        llm_self_report = proposal.confidence
+        if self.agent.name == "heuristic":
+            proposal.llm_reported_confidence = llm_self_report
+            proposal.harness_signal_score = llm_self_report
+            proposal.confidence_components = None
+            proposal.confidence_cap_applied = False
+            proposal.confidence_reason = "heuristic agent: no cross-check"
+            cross_stage = {
+                "llm_reported": llm_self_report,
+                "harness_signal": llm_self_report,
+                "components": None,
+                "cap_applied": False,
+                "reason": proposal.confidence_reason,
+                "final": proposal.confidence,
+            }
+        else:
+            sig = conf_mod.compute_signal_score(cp_runbook, cp_git, cp_signal, weights)
+            cross = conf_mod.apply_cross_check(llm_self_report, sig["score"], floor, cap)
+            proposal.llm_reported_confidence = llm_self_report
+            proposal.harness_signal_score = sig["score"]
+            proposal.confidence_components = sig["components"]
+            proposal.confidence_cap_applied = cross["applied_cap"]
+            proposal.confidence_reason = cross["reason"]
+            proposal.confidence = cross["final"]  # final value used by downstream gates
+            cross_stage = {
+                "llm_reported": llm_self_report,
+                "harness_signal": sig["score"],
+                "components": sig["components"],
+                "cap_applied": cross["applied_cap"],
+                "reason": cross["reason"],
+                "final": cross["final"],
+            }
+        self.store.record_stage(run_id, "confidence_cross_check", {"agent": self.agent.name}, cross_stage)
 
         action_rules = self.guardrails.config["action_ladder"].get(proposal.recommended_action, {})
         min_conf = action_rules.get("min_confidence", 0.0)

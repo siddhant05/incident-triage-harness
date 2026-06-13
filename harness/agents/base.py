@@ -20,6 +20,13 @@ class Proposal:
     runbook_id: str | None = None
     raw_agent_output: dict[str, Any] = field(default_factory=dict)
     tokens_used: int = 0
+    # Harness-derived confidence cross-check fields (populated by pipeline, not the agent).
+    # `confidence` above is the FINAL value (post-cap); `llm_reported_confidence` is the raw self-report.
+    llm_reported_confidence: float | None = None
+    harness_signal_score: float | None = None
+    confidence_components: dict[str, float] | None = None
+    confidence_cap_applied: bool = False
+    confidence_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -31,6 +38,11 @@ class Proposal:
             "suspect_commits": self.suspect_commits,
             "runbook_id": self.runbook_id,
             "tokens_used": self.tokens_used,
+            "llm_reported_confidence": self.llm_reported_confidence,
+            "harness_signal_score": self.harness_signal_score,
+            "confidence_components": self.confidence_components,
+            "confidence_cap_applied": self.confidence_cap_applied,
+            "confidence_reason": self.confidence_reason,
         }
 
 

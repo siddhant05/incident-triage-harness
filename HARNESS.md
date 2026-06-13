@@ -45,8 +45,9 @@ Sentry webhook → Material → Guardrails(pre) → Agent → Checkpoints → Gu
 1. `signal_sufficiency` — required fields present, stack trace non-empty
 2. `runbook_match` — at least one runbook tag intersects incident tags
 3. `git_analysis` — stack trace filenames match files in recent commits (5 most recent)
-4. `confidence_threshold` — derived score ≥ action's min confidence
-5. `action_safety` — proposed action permitted by ladder for severity
+4. `confidence_cross_check` — for LLM agents, harness computes a weighted signal score from `runbook_match` + `git_analysis` + `signal_sufficiency` (weights in `guardrails.yaml: confidence.components`). If `harness_signal < signal_floor`, the LLM self-reported confidence is capped at `cap_when_low_signal`. Heuristic agent is exempt — its confidence is already the signal score. Recorded as a stage and as cross-check fields on the `Proposal`.
+5. `confidence_threshold` — final (post-cap) confidence ≥ action's min confidence
+6. `action_safety` — proposed action permitted by ladder for severity
 
 Fail at any stage → halt pipeline → emit alarm → escalate human. Each checkpoint's input/output persists to SQLite; run replayable from any stage.
 
@@ -100,7 +101,7 @@ Agent sees no output tools. Agent output `Proposal` is scored → checkpoints de
 
 ## Key decisions
 
-- Python + FastAPI (fast webhook, Anthropic + Google GenAI SDKs), SQLite (zero ops, replayable), YAML guardrails (auditable, declared), pipeline not DAG (linear triage flow), `AgentInterface` protocol (clean swap seam), checkpoint-derived confidence (not LLM self-report).
+- Python + FastAPI (fast webhook, Anthropic + Google GenAI SDKs), SQLite (zero ops, replayable), YAML guardrails (auditable, declared), pipeline not DAG (linear triage flow), `AgentInterface` protocol (clean swap seam), LLM agents self-report confidence and the harness cross-checks against an independent signal score (runbook + git + signal_sufficiency); when signals are weak the LLM confidence is capped — heuristic agent is exempt because its confidence IS the signal score.
 - Real OSS repo for demo (not mocked git) — agent uses actual `git` subprocess on clone for authenticity.
 - Swappable agents via `AgentInterface`: `gemini` / `claude` (primary LLM workers) + `heuristic` (rules-only fallback for LLM outage, budget exhaustion, or offline demo). LLM SDKs imported lazily so heuristic-only runs need no API keys.
 

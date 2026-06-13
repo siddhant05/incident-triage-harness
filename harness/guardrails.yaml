@@ -9,6 +9,14 @@ budget:
 rate:
   per_service_per_min: 20
 
+confidence:
+  signal_floor: 0.6           # harness signal score required to trust LLM
+  cap_when_low_signal: 0.4    # max LLM confidence if signal score < floor
+  components:
+    runbook_match: 0.4
+    git_analysis: 0.4
+    signal_sufficiency: 0.2
+
 action_ladder:
   slack_post:
     min_severity: P4
