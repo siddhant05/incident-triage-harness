@@ -1,0 +1,60 @@
+# Team routing config. First match wins.
+# Match by: service prefix/regex, tag presence, runbook id, or stack-file path prefix.
+
+teams:
+  - id: ads-platform
+    name: Ads Platform
+    slack: "#ads-oncall"
+    pagerduty_service: ads-platform
+    match:
+      service_prefixes: [ads-, campaign-, tracking-]
+      tags: [ads, campaign, dsp, programmatic]
+      path_prefixes: [src/ads/, src/campaign/]
+
+  - id: infra-platform
+    name: Infra Platform
+    slack: "#infra-oncall"
+    pagerduty_service: infra-platform
+    match:
+      service_prefixes: [infra-, k8s-, db-]
+      tags: [infrastructure, database, kubernetes, network, deploy, postgres, redis]
+      runbook_ids: [db_connection_timeout, network_flap]
+
+  - id: components-ui
+    name: Components UI
+    slack: "#ui-platform"
+    pagerduty_service: components-ui
+    match:
+      service_prefixes: [ui-, web-, frontend-]
+      tags: [react, ui, component, design_system, frontend]
+      path_prefixes: [src/ui/, src/components/]
+
+  - id: checkout
+    name: Checkout & Payments
+    slack: "#checkout-oncall"
+    pagerduty_service: checkout
+    match:
+      service_prefixes: [checkout-, payment-, cart-, billing-]
+      tags: [checkout, payment, stripe, cart, billing]
+
+  - id: identity
+    name: Identity & Auth
+    slack: "#identity-oncall"
+    pagerduty_service: identity
+    match:
+      service_prefixes: [auth-, identity-, user-, sso-]
+      tags: [auth, oauth, jwt, session, sso, identity]
+      runbook_ids: [null_pointer_python]  # demo overlap
+
+  - id: data-platform
+    name: Data Platform
+    slack: "#data-oncall"
+    pagerduty_service: data-platform
+    match:
+      service_prefixes: [etl-, warehouse-, analytics-, pipeline-]
+      tags: [etl, airflow, snowflake, warehouse, analytics, kafka]
+
+# When no team matches → escalate to incident manager
+unrouted:
+  slack: "#oncall-triage"
+  pagerduty_service: incident-manager

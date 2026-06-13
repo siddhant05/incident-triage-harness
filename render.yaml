@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: incident-triage-harness
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn harness.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.7
+      - key: HARNESS_AGENT
+        value: gemini
+      - key: GITHUB_REPO
+        value: psf/requests
+      - key: GEMINI_API_KEY
+        sync: false  # set in Render dashboard
+      - key: SLACK_WEBHOOK_URL
+        sync: false  # set in Render dashboard
+      - key: GITHUB_TOKEN
+        sync: false  # optional, raises REST rate limit
+      - key: ANTHROPIC_API_KEY
+        sync: false  # optional, only if using claude agent
+    healthCheckPath: /health
+    autoDeploy: true

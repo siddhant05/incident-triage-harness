@@ -1,0 +1,27 @@
+{
+  "event": {
+    "event_id": "evt-001-demo",
+    "title": "AttributeError: 'NoneType' object has no attribute 'name'",
+    "message": "AttributeError in users handler",
+    "tags": [
+      ["service", "users-api"],
+      ["level", "error"],
+      ["python", "true"],
+      ["attribute_error", "true"]
+    ],
+    "exception": {
+      "values": [
+        {
+          "type": "AttributeError",
+          "value": "'NoneType' object has no attribute 'name'",
+          "stacktrace": {
+            "frames": [
+              {"filename": "src/requests/sessions.py", "function": "send", "lineno": 712},
+              {"filename": "src/requests/adapters.py", "function": "send", "lineno": 487}
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+input:
+  require_fields: [event_id, service, severity]
+  redact_patterns: [aws_key, jwt, email]
+
+budget:
+  daily_token_cap: 500000
+  per_incident_token_cap: 8000
+
+rate:
+  per_service_per_min: 20
+
+action_ladder:
+  slack_post:
+    min_severity: P4
+    min_confidence: 0.0
+  jira_create:
+    min_severity: P3
+    min_confidence: 0.6
+    require_runbook_match: true
+  page_secondary:
+    min_severity: P2
+    min_confidence: 0.7
+    require_runbook_match: true
+  suggest_rollback:
+    min_severity: P1
+    min_confidence: 0.8
+    advisory_only: true
+  mark_resolved:
+    human_only: true

@@ -1,0 +1,27 @@
+{
+  "event": {
+    "event_id": "evt-002-demo",
+    "title": "OperationalError: timeout expired",
+    "message": "Database connection timeout in checkout flow",
+    "tags": [
+      ["service", "checkout-svc"],
+      ["level", "fatal"],
+      ["database", "true"],
+      ["timeout", "true"],
+      ["postgres", "true"]
+    ],
+    "exception": {
+      "values": [
+        {
+          "type": "OperationalError",
+          "value": "timeout expired",
+          "stacktrace": {
+            "frames": [
+              {"filename": "src/requests/sessions.py", "function": "request", "lineno": 530}
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
